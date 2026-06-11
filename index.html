@@ -137,6 +137,71 @@
   .tt-row { font-size: 11px; color: #9ca3af; margin: 2px 0; }
   .tt-row b { color: #e2e8f0; }
   .tt-sep { border: none; border-top: 1px solid rgba(255,255,255,.08); margin: 6px 0; }
+
+  /* ── Context menu ── */
+  #ctx-menu {
+    position: fixed; z-index: 50; display: none; flex-direction: column; gap: 4px;
+    background: rgba(8,8,18,.96); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 10px; padding: 6px; backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0,0,0,.7);
+  }
+  #ctx-menu button {
+    background: none; border: none; color: #e2e8f0; font-family: inherit;
+    font-size: 12px; letter-spacing: 1px; padding: 8px 16px; border-radius: 6px;
+    cursor: pointer; text-align: left; white-space: nowrap;
+    transition: background .15s;
+  }
+  #ctx-menu button:hover { background: rgba(255,255,255,.1); }
+  #ctx-menu button.danger:hover { background: rgba(239,68,68,.2); color: #fca5a5; }
+
+  /* ── Dissect overlay ── */
+  #dissect-overlay {
+    position: fixed; inset: 0; pointer-events: none; z-index: 40; display: none;
+  }
+  /* Durante el desarme se ocultan los demás paneles para ver las tarjetas */
+  #legend, #feed, #filter-bar, #dir-bar, #stats, #orbit-hint, #demo-badge, #follow-hud {
+    transition: opacity .35s;
+  }
+  body.dissecting #legend, body.dissecting #feed, body.dissecting #filter-bar,
+  body.dissecting #dir-bar, body.dissecting #stats, body.dissecting #orbit-hint,
+  body.dissecting #demo-badge, body.dissecting #follow-hud {
+    opacity: 0; pointer-events: none;
+  }
+  #dissect-panel {
+    position: absolute; right: 24px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 8px; width: 248px;
+    pointer-events: auto;
+  }
+  .layer-card {
+    background: rgba(6,6,16,.94); border-radius: 12px; padding: 11px 14px;
+    backdrop-filter: blur(16px); box-shadow: 0 4px 28px rgba(0,0,0,.7);
+    font-size: 11px; line-height: 1.7; color: #cbd5e1;
+    border: 1px solid transparent; border-left-width: 3px;
+  }
+  .layer-card .lc-header {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; font-weight: bold; letter-spacing: 2px;
+    margin-bottom: 7px; padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .layer-card .lc-icon { font-size: 20px; line-height: 1; }
+  .layer-card b { color: #f1f5f9; }
+  #lc-personas   { border-color: rgba(245,158,11,.35); border-left-color: #fbbf24; }
+  #lc-personas   .lc-header { color: #fbbf24; }
+  #lc-carroceria { border-color: rgba(99,102,241,.35); border-left-color: #818cf8; }
+  #lc-carroceria .lc-header { color: #818cf8; }
+  #lc-matricula  { border-color: rgba(16,185,129,.35); border-left-color: #34d399; }
+  #lc-matricula  .lc-header { color: #34d399; }
+  #lc-chasis     { border-color: rgba(239,68,68,.35);  border-left-color: #f87171; }
+  #lc-chasis     .lc-header { color: #f87171; }
+  #lc-reassemble {
+    margin-top: 4px; width: 100%; pointer-events: auto;
+    background: rgba(99,102,241,.15); border: 1px solid rgba(99,102,241,.4);
+    color: #a5b4fc; font-family: inherit; font-size: 11px; letter-spacing: 2px;
+    padding: 9px 0; border-radius: 20px; cursor: pointer;
+    backdrop-filter: blur(8px); transition: background .15s;
+  }
+  #lc-reassemble:hover { background: rgba(99,102,241,.35); }
 </style>
 </head>
 <body>
@@ -200,6 +265,33 @@
 </div>
 
 <div id="demo-badge">⚠ MODO DEMO — usa sudo para captura real</div>
+
+<div id="ctx-menu">
+  <button id="ctx-follow">📷 &nbsp;Seguir</button>
+  <button id="ctx-dissect" class="danger">💥 &nbsp;Desarmar</button>
+</div>
+
+<div id="dissect-overlay">
+  <div id="dissect-panel">
+    <div class="layer-card" id="lc-personas">
+      <div class="lc-header"><span class="lc-icon">👥</span>PERSONAS — L7 APLICACIÓN</div>
+      <div id="lc-personas-data"></div>
+    </div>
+    <div class="layer-card" id="lc-carroceria">
+      <div class="lc-header"><span class="lc-icon">🚗</span>CARROCERÍA — L4 TRANSPORTE</div>
+      <div id="lc-carroceria-data"></div>
+    </div>
+    <div class="layer-card" id="lc-matricula">
+      <div class="lc-header"><span class="lc-icon">🔢</span>MATRÍCULA — L3 RED</div>
+      <div id="lc-matricula-data"></div>
+    </div>
+    <div class="layer-card" id="lc-chasis">
+      <div class="lc-header"><span class="lc-icon">🔩</span>CHASIS — L2 ENLACE</div>
+      <div id="lc-chasis-data"></div>
+    </div>
+    <button id="lc-reassemble">🔧 REARMAR — ESC</button>
+  </div>
+</div>
 
 <div id="tooltip">
   <div class="tt-proto" id="tt-proto"></div>
@@ -524,31 +616,123 @@ scene.add(rainLines);
 // ── Shared geometries ─────────────────────────────────────────────────────────
 const SHARED = {};
 function initShared() {
+  // Caja trapezoidal: cilindro de 4 lados rotado 45° = caja con la parte alta más angosta
+  function taperedBox(lenB, lenT, h, w) {
+    const g = new THREE.CylinderGeometry(lenT / Math.SQRT2, lenB / Math.SQRT2, h, 4, 1);
+    g.rotateY(Math.PI / 4);
+    g.scale(1, 1, w / lenB);
+    return g;
+  }
+
+  // Carrocerías con lados inclinados (el camión queda recto: es un contenedor)
+  const sedanBody = taperedBox(1.7, 1.56, 0.48, 0.65);
   const bodyGeos = {
-    sedan:  new THREE.BoxGeometry(1.7, 0.48, 0.65),
-    sports: new THREE.BoxGeometry(1.8, 0.40, 0.55),
-    moto:   new THREE.BoxGeometry(1.3, 0.25, 0.28),
-    taxi:   new THREE.BoxGeometry(1.7, 0.48, 0.65),
+    sedan:  sedanBody,
+    sports: taperedBox(1.8, 1.62, 0.40, 0.55),
+    moto:   taperedBox(1.2, 0.95, 0.22, 0.24),
+    taxi:   sedanBody,
     truck:  new THREE.BoxGeometry(3.1, 0.52, 0.88),
-    van:    new THREE.BoxGeometry(2.2, 0.52, 0.78),
+    van:    taperedBox(2.2, 2.08, 0.52, 0.78),
   };
+  // Dimensiones lógicas (CylinderGeometry no expone width/depth)
+  const dims = {
+    sedan:  { len: 1.7, h: 0.48, w: 0.65 },
+    sports: { len: 1.8, h: 0.40, w: 0.55 },
+    moto:   { len: 1.2, h: 0.22, w: 0.24 },
+    taxi:   { len: 1.7, h: 0.48, w: 0.65 },
+    truck:  { len: 3.1, h: 0.52, w: 0.88 },
+    van:    { len: 2.2, h: 0.52, w: 0.78 },
+  };
+
+  const sedanCab = taperedBox(1.0, 0.55, 0.42, 0.60);
   const cabGeos = {
-    sedan:  new THREE.BoxGeometry(0.88, 0.52, 0.58),
-    sports: new THREE.BoxGeometry(0.82, 0.40, 0.48),
+    sedan:  sedanCab,
+    sports: taperedBox(1.05, 0.45, 0.30, 0.50),
     moto:   null,
-    taxi:   new THREE.BoxGeometry(0.88, 0.52, 0.58),
+    taxi:   sedanCab,
     truck:  new THREE.BoxGeometry(0.9,  0.80, 0.82),
-    van:    new THREE.BoxGeometry(2.1,  0.75, 0.72),
+    van:    new THREE.BoxGeometry(2.05, 0.70, 0.70),
   };
-  const wheelGeo   = new THREE.CylinderGeometry(0.20, 0.20, 0.16, 8);
-  const rimGeo     = new THREE.CylinderGeometry(0.09, 0.09, 0.18, 6);
-  const darkMat    = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
-  const rimMat     = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.85, roughness: 0.25 });
-  const glassMat   = new THREE.MeshStandardMaterial({ color: 0x7799cc, roughness: 0.15, transparent: true, opacity: 0.55 });
-  const taxiTopMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 0.7 });
+  const cabH = { sedan: 0.42, sports: 0.30, taxi: 0.42, truck: 0.80, van: 0.70 };
+
+  // Techo del color de la carrocería sobre las cabinas de vidrio
+  const roofGeos = {
+    sedan:  new THREE.BoxGeometry(0.56, 0.045, 0.35),
+    sports: new THREE.BoxGeometry(0.46, 0.040, 0.23),
+    taxi:   new THREE.BoxGeometry(0.56, 0.045, 0.35),
+  };
+
+  const wheelGeo     = new THREE.CylinderGeometry(0.20, 0.20, 0.15, 12);
+  const rimGeo       = new THREE.CylinderGeometry(0.11, 0.11, 0.17, 8);
+  const motoWheelGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.09, 14);
+  const motoRimGeo   = new THREE.CylinderGeometry(0.13, 0.13, 0.11, 8);
+
+  const darkMat    = new THREE.MeshStandardMaterial({ color: 0x15151a, roughness: 0.92 });
+  const rimMat     = new THREE.MeshStandardMaterial({ color: 0xc8ccd4, metalness: 0.9, roughness: 0.2 });
+  const glassMat   = new THREE.MeshStandardMaterial({
+    color: 0x8fb6e8, roughness: 0.06, metalness: 0.85,
+    transparent: true, opacity: 0.8, flatShading: true,
+  });
+  const taxiTopMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 0.9 });
   const taxiTopGeo = new THREE.BoxGeometry(0.45, 0.15, 0.05);
+
+  // Faros y luces traseras (frente del auto = -X local)
+  const lightGeo  = new THREE.BoxGeometry(0.05, 0.09, 0.15);
+  const headMat   = new THREE.MeshStandardMaterial({ color: 0xfffbe0, emissive: 0xfff0a8, emissiveIntensity: 2.4 });
+  const tailMat   = new THREE.MeshStandardMaterial({ color: 0xff5544, emissive: 0xff2211, emissiveIntensity: 1.8 });
+  const grilleGeo = new THREE.BoxGeometry(0.04, 0.16, 0.42);
+  const windGeo   = new THREE.BoxGeometry(0.04, 0.34, 0.62);  // parabrisas camión/furgoneta
+  const riderGeo  = new THREE.BoxGeometry(0.34, 0.40, 0.24);  // piloto moto
+  const riderMat  = new THREE.MeshStandardMaterial({ color: 0x23272f, roughness: 0.7 });
+
+  // Paragolpes, patente, alerón, escape, manubrio
+  const bumperGeos = {};
+  for (const [t, d] of Object.entries(dims))
+    bumperGeos[t] = new THREE.BoxGeometry(0.08, 0.12, d.w * 0.92);
+  const bumperMat   = new THREE.MeshStandardMaterial({ color: 0x202229, roughness: 0.85 });
+  const plateGeo    = new THREE.BoxGeometry(0.02, 0.11, 0.28);
+  const plateMat    = new THREE.MeshStandardMaterial({ color: 0xe5e9f0, roughness: 0.4 });
+  const spoilerGeo  = new THREE.BoxGeometry(0.15, 0.035, 0.50);
+  const spoilPostGeo= new THREE.BoxGeometry(0.03, 0.09, 0.03);
+  const exhaustGeo  = new THREE.CylinderGeometry(0.035, 0.035, 0.12, 8);
+  const stackGeo    = new THREE.CylinderGeometry(0.04, 0.04, 0.5, 8);   // chimenea camión
+  const barGeo      = new THREE.CylinderGeometry(0.018, 0.018, 0.40, 6); // manubrio moto
+  const motoShieldGeo = new THREE.BoxGeometry(0.03, 0.16, 0.20);
+
+  // Banda de cuadros del taxi
+  const ck = document.createElement('canvas'); ck.width = 256; ck.height = 32;
+  const cg = ck.getContext('2d');
+  cg.fillStyle = '#ffffff'; cg.fillRect(0, 0, 256, 32);
+  cg.fillStyle = '#111111';
+  for (let i = 0; i < 16; i++) for (let j = 0; j < 2; j++)
+    if ((i + j) % 2 === 0) cg.fillRect(i * 16, j * 16, 16, 16);
+  const checkerMat = new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(ck), roughness: 0.6 });
+  const bandGeo    = new THREE.BoxGeometry(1.72, 0.13, 0.67);
+
+  // Sombra falsa bajo el auto (gradiente radial)
+  const sc = document.createElement('canvas'); sc.width = sc.height = 64;
+  const sg = sc.getContext('2d');
+  const grad = sg.createRadialGradient(32, 32, 4, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(0,0,0,0.5)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  sg.fillStyle = grad; sg.fillRect(0, 0, 64, 64);
+  const shadowMat = new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(sc), transparent: true, depthWrite: false,
+  });
+  const shadowGeo = new THREE.PlaneGeometry(1, 1);
+
   for (const [type, bodyGeo] of Object.entries(bodyGeos)) {
-    SHARED[type] = { bodyGeo, cabGeo: cabGeos[type], wheelGeo, rimGeo, darkMat, rimMat, glassMat, taxiTopMat, taxiTopGeo };
+    SHARED[type] = {
+      bodyGeo, cabGeo: cabGeos[type], cabH: cabH[type] ?? 0,
+      dims: dims[type], roofGeo: roofGeos[type] ?? null,
+      wheelGeo, rimGeo, motoWheelGeo, motoRimGeo,
+      darkMat, rimMat, glassMat, taxiTopMat, taxiTopGeo,
+      lightGeo, headMat, tailMat, grilleGeo, windGeo, riderGeo, riderMat,
+      bumperGeo: bumperGeos[type], bumperMat, plateGeo, plateMat,
+      spoilerGeo, spoilPostGeo, exhaustGeo, stackGeo, barGeo, motoShieldGeo,
+      checkerMat, bandGeo,
+      shadowGeo, shadowMat,
+    };
   }
 }
 initShared();
@@ -599,44 +783,187 @@ function returnToPool(entry) {
 function buildCarEntry(type, color) {
   const s = SHARED[type] || SHARED['sedan'];
   const group = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.38, metalness: 0.55 });
-  const bh = s.bodyGeo.parameters.height;
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color, roughness: 0.26, metalness: 0.72,
+    emissive: color, emissiveIntensity: 0.1, flatShading: true,
+  });
+  const { len: bLen, h: bh, w: bw } = s.dims;
+  const frontX = -bLen / 2;                       // frente del vehículo = -X local
+  const y0 = type === 'moto' ? 0.15 : 0.12;       // despeje del suelo
 
-  const body = new THREE.Mesh(s.bodyGeo, bodyMat);
-  body.position.y = bh / 2;
+  const body = new THREE.Mesh(
+    s.bodyGeo,
+    type === 'truck'
+      ? new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: 0.25 })  // contenedor mate
+      : bodyMat
+  );
+  body.position.y = y0 + bh / 2;
+  body.userData.role = 'body';
   group.add(body);
 
   if (s.cabGeo) {
-    const ch = s.cabGeo.parameters.height;
-    const cab = new THREE.Mesh(s.cabGeo, type === 'van' ? bodyMat : s.glassMat);
+    const ch  = s.cabH;
+    const cab = new THREE.Mesh(s.cabGeo, (type === 'van' || type === 'truck') ? bodyMat : s.glassMat);
     const offX = type === 'truck'
-      ? -s.bodyGeo.parameters.width / 2 + s.cabGeo.parameters.width / 2 + 0.05
-      : 0;
-    cab.position.set(offX, bh + ch / 2, 0);
+      ? frontX + s.cabGeo.parameters.width / 2 + 0.05
+      : (type === 'sports' ? 0.1 : 0.05);
+    cab.position.set(offX, y0 + bh + ch / 2, 0);
+    cab.userData.role = 'cabin';
     group.add(cab);
+
+    // Techo del color de la carrocería sobre las cabinas de vidrio
+    if (s.roofGeo) {
+      const roof = new THREE.Mesh(s.roofGeo, bodyMat);
+      roof.position.set(offX, y0 + bh + ch - 0.01, 0);
+      roof.userData.role = 'cabin';
+      group.add(roof);
+    }
+
     if (type === 'taxi') {
       const top = new THREE.Mesh(s.taxiTopGeo, s.taxiTopMat);
-      top.position.set(0, bh + ch + 0.1, 0);
+      top.position.set(0.05, y0 + bh + ch + 0.1, 0);
+      top.userData.role = 'cabin';
       group.add(top);
+    }
+    // Parabrisas de vidrio para camión y furgoneta (cabina opaca)
+    if (type === 'truck' || type === 'van') {
+      const wind = new THREE.Mesh(s.windGeo, s.glassMat);
+      const wx = type === 'truck' ? frontX + 0.03 : frontX + 0.10;
+      wind.position.set(wx, y0 + bh + ch * 0.62, 0);
+      wind.userData.role = 'cabin';
+      group.add(wind);
+    }
+    // Chimenea de escape detrás de la cabina del camión
+    if (type === 'truck') {
+      const stack = new THREE.Mesh(s.stackGeo, s.rimMat);
+      stack.position.set(frontX + 0.98, y0 + bh + 0.28, bw * 0.38);
+      stack.userData.role = 'cabin';
+      group.add(stack);
     }
   }
 
-  const wz = s.bodyGeo.parameters.depth / 2 + 0.02;
-  const wxList = type === 'truck'
-    ? [-1.1, 0.0, 1.1]
-    : [-s.bodyGeo.parameters.width * 0.32, s.bodyGeo.parameters.width * 0.32];
-  for (const wx of wxList) {
-    for (const wside of [-wz, wz]) {
-      const w = new THREE.Mesh(s.wheelGeo, s.darkMat);
+  if (type === 'moto') {
+    const rider = new THREE.Mesh(s.riderGeo, s.riderMat);
+    rider.position.set(0.12, y0 + bh + 0.30, 0);
+    rider.userData.role = 'cabin';
+    group.add(rider);
+    const bar = new THREE.Mesh(s.barGeo, s.darkMat);
+    bar.rotation.x = Math.PI / 2;
+    bar.position.set(frontX + 0.18, y0 + bh + 0.20, 0);
+    bar.userData.role = 'cabin';
+    group.add(bar);
+    const shield = new THREE.Mesh(s.motoShieldGeo, s.glassMat);
+    shield.position.set(frontX + 0.13, y0 + bh + 0.32, 0);
+    shield.userData.role = 'cabin';
+    group.add(shield);
+  }
+
+  // Faros (frente) y luces traseras
+  const lzList = type === 'moto' ? [0] : [-bw * 0.3, bw * 0.3];
+  for (const lz of lzList) {
+    const head = new THREE.Mesh(s.lightGeo, s.headMat);
+    head.position.set(frontX - 0.01, y0 + bh * 0.55, lz);
+    head.userData.role = 'body';
+    group.add(head);
+    const tail = new THREE.Mesh(s.lightGeo, s.tailMat);
+    tail.position.set(-frontX + 0.01, y0 + bh * 0.5, lz);
+    tail.userData.role = 'body';
+    group.add(tail);
+  }
+
+  // Parrilla delantera oscura (autos)
+  if (type === 'sedan' || type === 'taxi' || type === 'sports') {
+    const grille = new THREE.Mesh(s.grilleGeo, s.darkMat);
+    grille.position.set(frontX + 0.01, y0 + bh * 0.3, 0);
+    grille.userData.role = 'body';
+    group.add(grille);
+  }
+
+  // Paragolpes delantero y trasero + patente trasera (todos menos la moto)
+  if (type !== 'moto') {
+    for (const bx of [frontX - 0.03, -frontX + 0.03]) {
+      const bump = new THREE.Mesh(s.bumperGeo, s.bumperMat);
+      bump.position.set(bx, 0.18, 0);
+      bump.userData.role = 'body';
+      group.add(bump);
+    }
+    const plate = new THREE.Mesh(s.plateGeo, s.plateMat);
+    plate.position.set(-frontX + 0.08, 0.30, 0);
+    plate.userData.role = 'body';
+    group.add(plate);
+  }
+
+  // Banda de cuadros del taxi
+  if (type === 'taxi') {
+    const band = new THREE.Mesh(s.bandGeo, s.checkerMat);
+    band.position.set(0, y0 + bh * 0.55, 0);
+    band.userData.role = 'body';
+    group.add(band);
+  }
+
+  // Alerón y escape cromado del deportivo
+  if (type === 'sports') {
+    const wing = new THREE.Mesh(s.spoilerGeo, bodyMat);
+    wing.position.set(-frontX - 0.13, y0 + bh + 0.12, 0);
+    wing.userData.role = 'body';
+    group.add(wing);
+    for (const pz of [-0.17, 0.17]) {
+      const post = new THREE.Mesh(s.spoilPostGeo, s.darkMat);
+      post.position.set(-frontX - 0.13, y0 + bh + 0.06, pz);
+      post.userData.role = 'body';
+      group.add(post);
+    }
+    const pipe = new THREE.Mesh(s.exhaustGeo, s.rimMat);
+    pipe.rotation.z = Math.PI / 2;
+    pipe.position.set(-frontX + 0.04, 0.15, 0.16);
+    pipe.userData.role = 'body';
+    group.add(pipe);
+  }
+
+  // Ruedas
+  if (type === 'moto') {
+    for (const wx of [-bLen * 0.38, bLen * 0.38]) {
+      const w = new THREE.Mesh(s.motoWheelGeo, s.darkMat);
       w.rotation.x = Math.PI / 2;
-      w.position.set(wx, 0.20, wside);
+      w.position.set(wx, 0.25, 0);
+      w.userData.role = wx >= 0 ? 'wheelF' : 'wheelR';
       group.add(w);
-      const rim = new THREE.Mesh(s.rimGeo, s.rimMat);
+      const rim = new THREE.Mesh(s.motoRimGeo, s.rimMat);
       rim.rotation.x = Math.PI / 2;
       rim.position.copy(w.position);
+      rim.userData.role = wx >= 0 ? 'rimF' : 'rimR';
       group.add(rim);
     }
+  } else {
+    const wz = bw / 2 + 0.02;
+    const wxList = type === 'truck'
+      ? [-1.1, 0.0, 1.1]
+      : [-bLen * 0.32, bLen * 0.32];
+    for (const wx of wxList) {
+      const wRole   = wx >= 0 ? 'wheelF' : 'wheelR';
+      const rimRole = wx >= 0 ? 'rimF'   : 'rimR';
+      for (const wside of [-wz, wz]) {
+        const w = new THREE.Mesh(s.wheelGeo, s.darkMat);
+        w.rotation.x = Math.PI / 2;
+        w.position.set(wx, 0.20, wside);
+        w.userData.role = wRole;
+        group.add(w);
+        const rim = new THREE.Mesh(s.rimGeo, s.rimMat);
+        rim.rotation.x = Math.PI / 2;
+        rim.position.copy(w.position);
+        rim.userData.role = rimRole;
+        group.add(rim);
+      }
+    }
   }
+
+  // Sombra falsa bajo el vehículo
+  const shadow = new THREE.Mesh(s.shadowGeo, s.shadowMat);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.02;
+  shadow.scale.set(bLen * 1.45, bw * 2.1, 1);
+  shadow.userData.role = 'shadow';
+  group.add(shadow);
 
   group.traverse(child => { child.userData.carGroup = group; });
   return { mesh: group, type, color, pkt: null };
@@ -650,6 +977,9 @@ const activeCars   = [];
 const activeProtos = new Set(['TCP','UDP','ICMP','DNS','HTTP','HTTPS','SSH','DHCP','ARP','OTHER']);
 let   paused       = false;
 let   followEntry  = null;
+let   dissectedState  = null;  // { carIdx, group, pods, pkt, t }
+let   ctxMenuEntry    = null;
+let   ctxMenuCarIdx   = -1;
 
 // ── Protocol filter buttons ────────────────────────────────────────────────────
 document.querySelectorAll('.proto-btn').forEach(btn => {
@@ -705,6 +1035,230 @@ function releaseFollow() {
   followEntry = null;
   followHud.style.display = 'none';
 }
+
+// ── Context menu ──────────────────────────────────────────────────────────────
+const ctxMenu = document.getElementById('ctx-menu');
+
+function showContextMenu(entry, carIdx, sx, sy) {
+  ctxMenuEntry  = entry;
+  ctxMenuCarIdx = carIdx;
+  ctxMenu.style.left    = sx + 'px';
+  ctxMenu.style.top     = sy + 'px';
+  ctxMenu.style.display = 'flex';
+}
+function hideContextMenu() {
+  ctxMenu.style.display = 'none';
+  ctxMenuEntry  = null;
+  ctxMenuCarIdx = -1;
+}
+
+document.getElementById('ctx-follow').addEventListener('click', () => {
+  if (ctxMenuEntry) startFollow(ctxMenuEntry);
+  hideContextMenu();
+});
+document.getElementById('ctx-dissect').addEventListener('click', () => {
+  const idx = ctxMenuCarIdx;
+  hideContextMenu();
+  if (idx >= 0 && idx < activeCars.length) {
+    if (!paused) togglePause();
+    dissectCar(idx);
+  }
+});
+
+// ── Dissect / desarmar ────────────────────────────────────────────────────────
+// Cada tarjeta recibe un objeto 3D representativo:
+//   Personas → pasajeros · Carrocería → casco real del auto
+//   Matrícula → chapa con la IP · Chasis → bastidor con placa MAC
+
+function makePersonasProp(pkt) {
+  const g = new THREE.Group();
+  // más datos → más pasajeros
+  const n = pkt.size < 300 ? 1 : pkt.size < 900 ? 2 : 3;
+  const skinMat   = new THREE.MeshStandardMaterial({ color: 0xe8c39e, roughness: 0.65 });
+  const headGeo   = new THREE.SphereGeometry(0.13, 12, 10);
+  const torsoGeo  = new THREE.CapsuleGeometry(0.16, 0.34, 4, 10);
+  const torsoCols = [pkt.color, 0x5b748f, 0x7f5a93];
+  for (let i = 0; i < n; i++) {
+    const x = (i - (n - 1) / 2) * 0.48;
+    const torso = new THREE.Mesh(torsoGeo,
+      new THREE.MeshStandardMaterial({ color: torsoCols[i], roughness: 0.55 }));
+    torso.position.set(x, -0.12, 0);   // centrado vertical respecto al ancla
+    g.add(torso);
+    const head = new THREE.Mesh(headGeo, skinMat);
+    head.position.set(x, 0.32, 0);
+    g.add(head);
+  }
+  return g;
+}
+
+function makePlateProp(ip) {
+  const cv  = document.createElement('canvas');
+  cv.width = 512; cv.height = 128;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#f1f5f9'; ctx.fillRect(0, 0, 512, 128);
+  ctx.fillStyle = '#1e3a8a'; ctx.fillRect(0, 0, 56, 128);          // banda azul
+  ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 30px monospace';
+  ctx.textAlign = 'center';  ctx.fillText('IP', 28, 78);
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 12;
+  ctx.strokeRect(0, 0, 512, 128);
+  ctx.fillStyle = '#0f172a';
+  ctx.font = `bold ${ip.length > 13 ? 46 : 56}px monospace`;
+  ctx.fillText(ip, 284, 84);
+  const mat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) });
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.52, 0.06), mat));
+  return g;
+}
+
+function makeChassisProp(mac) {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: 0x6b7280, metalness: 0.85, roughness: 0.4 });
+  const dark  = new THREE.MeshStandardMaterial({ color: 0x16161c, roughness: 0.9 });
+
+  const railGeo = new THREE.BoxGeometry(2.0, 0.09, 0.09);
+  for (const z of [-0.36, 0.36]) {
+    const rail = new THREE.Mesh(railGeo, metal);
+    rail.position.set(0, 0, z);
+    g.add(rail);
+  }
+  const crossGeo = new THREE.BoxGeometry(0.09, 0.07, 0.72);
+  for (const x of [-0.82, -0.28, 0.28, 0.82]) {
+    const cross = new THREE.Mesh(crossGeo, metal);
+    cross.position.set(x, 0, 0);
+    g.add(cross);
+  }
+  const wGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.14, 12);
+  for (const x of [-0.78, 0.78]) for (const z of [-0.48, 0.48]) {
+    const w = new THREE.Mesh(wGeo, dark);
+    w.rotation.x = Math.PI / 2;
+    w.position.set(x, 0, z);
+    g.add(w);
+  }
+  // placa metálica con el número de chasis (MAC) grabado
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 96;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#454b54'; ctx.fillRect(0, 0, 512, 96);
+  ctx.strokeStyle = '#262a30'; ctx.lineWidth = 8; ctx.strokeRect(0, 0, 512, 96);
+  ctx.fillStyle = '#9aa3b0'; ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('Nº CHASIS', 256, 32);
+  ctx.fillStyle = '#dde3ec'; ctx.font = 'bold 40px monospace';
+  ctx.fillText((mac || 'N/D').toUpperCase(), 256, 74);
+  const plaqueMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) });
+  const plaque = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.28, 0.04), plaqueMat);
+  plaque.position.set(0, 0.26, 0);
+  g.add(plaque);
+  return g;
+}
+
+function dissectCar(carIdx) {
+  const c = activeCars[carIdx];
+  if (!c) return;
+  c.exitPhase = 'dissected';
+
+  const group = c.entry.mesh;
+  const pkt   = c.entry.pkt;
+
+  const carCenter = new THREE.Vector3();
+  group.getWorldPosition(carCenter);
+  const norm = 1 / group.scale.x;   // normaliza el casco para autos chicos/grandes
+
+  // CARROCERÍA: clones reales del casco (cuerpo, cabina, faros, parrilla — sin ruedas)
+  const tmpWPos  = new THREE.Vector3();
+  const tmpWQuat = new THREE.Quaternion();
+  const tmpWScl  = new THREE.Vector3();
+  const shellPod = new THREE.Group();
+  const SKIP = new Set(['shadow', 'wheelF', 'wheelR', 'rimF', 'rimR']);
+  for (const child of [...group.children]) {
+    if (!child.isMesh || SKIP.has(child.userData.role)) continue;
+    child.getWorldPosition(tmpWPos);
+    child.getWorldQuaternion(tmpWQuat);
+    child.getWorldScale(tmpWScl);
+    const clone = new THREE.Mesh(child.geometry, child.material);
+    clone.position.copy(tmpWPos).sub(carCenter);
+    clone.quaternion.copy(tmpWQuat);
+    clone.scale.copy(tmpWScl);
+    shellPod.add(clone);
+  }
+  // centrar el casco en su centroide para que rote en su lugar
+  const centroid = new THREE.Vector3();
+  for (const m of shellPod.children) centroid.add(m.position);
+  centroid.divideScalar(Math.max(1, shellPod.children.length));
+  for (const m of shellPod.children) m.position.sub(centroid);
+
+  const plateIp = pkt.direction === 'out' ? pkt.dst : pkt.src;
+  const pods = [
+    { pod: makePersonasProp(pkt),       card: 'lc-personas',   startScale: 0.12, targetScale: 1.0,         disposable: true  },
+    { pod: shellPod,                    card: 'lc-carroceria', startScale: 1,    targetScale: 1.0 * norm,  disposable: false },
+    { pod: makePlateProp(plateIp),      card: 'lc-matricula',  startScale: 0.12, targetScale: 0.8,         disposable: true  },
+    { pod: makeChassisProp(pkt.mac_src),card: 'lc-chasis',     startScale: 0.12, targetScale: 0.8,         disposable: true  },
+  ];
+  for (const p of pods) {
+    p.pod.position.copy(carCenter);
+    p.pod.scale.setScalar(p.startScale);
+    scene.add(p.pod);
+  }
+
+  group.visible = false;
+  dissectedState = { carIdx, group, pods, pkt, t: 0 };
+  populateDissectCards(pkt);
+  document.getElementById('dissect-overlay').style.display = 'block';
+  document.body.classList.add('dissecting');
+}
+
+function populateDissectCards(pkt) {
+  const svc  = pkt.service ? `<b>Servicio:</b> ${pkt.service}` : null;
+  const dir  = `<b>Dirección:</b> ${pkt.direction === 'out' ? '↗ Saliente' : '↙ Entrante'}`;
+  const info = pkt.info    ? `<b>Info:</b> ${pkt.info}` : null;
+  document.getElementById('lc-personas-data').innerHTML =
+    [svc, dir, info].filter(Boolean).join('<br>');
+
+  const dport = pkt.info ? pkt.info.replace(':', '') : '?';
+  const hasSport = pkt.sport && String(pkt.sport) !== dport;
+  const sport = hasSport ? `<b>Puerto:</b> ${pkt.sport} → ${dport}` : null;
+  const flags = pkt.tcp_flags && pkt.tcp_flags !== '—'
+    ? `<b>Flags TCP:</b> ${pkt.tcp_flags}` : null;
+  document.getElementById('lc-carroceria-data').innerHTML =
+    [`<b>Protocolo:</b> ${pkt.proto}`,
+     sport,
+     `<b>Tamaño:</b> ${pkt.size} bytes`,
+     flags].filter(Boolean).join('<br>');
+
+  document.getElementById('lc-matricula-data').innerHTML =
+    `<b>Origen:</b>&nbsp;${pkt.src}<br><b>Destino:</b> ${pkt.dst}`;
+
+  const ms = pkt.mac_src || 'N/D';
+  const md = pkt.mac_dst || 'N/D';
+  document.getElementById('lc-chasis-data').innerHTML =
+    `<b>MAC src:</b> ${ms}<br><b>MAC dst:</b> ${md}`;
+}
+
+function reassemble() {
+  if (!dissectedState) return;
+  const ds = dissectedState;
+  for (const p of ds.pods) {
+    scene.remove(p.pod);
+    if (p.disposable) {
+      // los props se crean por desarme: liberar geometrías/materiales/texturas
+      p.pod.traverse(o => {
+        if (!o.isMesh) return;
+        o.geometry.dispose();
+        if (o.material.map) o.material.map.dispose();
+        o.material.dispose();
+      });
+    }
+  }
+  const c = activeCars[ds.carIdx];
+  if (c) { returnToPool(c.entry); activeCars.splice(ds.carIdx, 1); }
+  document.getElementById('dissect-overlay').style.display = 'none';
+  document.body.classList.remove('dissecting');
+  dissectedState = null;
+}
+
+document.getElementById('lc-reassemble').addEventListener('click', () => {
+  reassemble();
+  if (paused) togglePause();
+});
 
 // ── Orbit controls (active when paused) ───────────────────────────────────────
 let orbitTheta  = 0;
@@ -764,9 +1318,13 @@ renderer.domElement.addEventListener('wheel', e => {
   }
 }, { passive: true });
 
-// ── Click: follow car or release ──────────────────────────────────────────────
+// ── Click: context menu / follow / release ────────────────────────────────────
 renderer.domElement.addEventListener('click', e => {
   if (dragMoved) { dragMoved = false; return; }
+  hideContextMenu();
+
+  if (dissectedState) { reassemble(); if (paused) togglePause(); return; }
+
   const mouse = new THREE.Vector2(
      (e.clientX / innerWidth)  * 2 - 1,
     -(e.clientY / innerHeight) * 2 + 1
@@ -776,6 +1334,7 @@ renderer.domElement.addEventListener('click', e => {
 
   const targets = [];
   for (const c of activeCars) {
+    if (c.exitPhase === 'dissected') continue;
     const ch = c.entry.mesh.children;
     for (let i = 0; i < Math.min(ch.length, 2); i++) {
       if (ch[i].isMesh) targets.push(ch[i]);
@@ -784,8 +1343,9 @@ renderer.domElement.addEventListener('click', e => {
   const hits = ray.intersectObjects(targets, false);
   if (hits.length > 0) {
     const group = hits[0].object.userData.carGroup;
-    const entry = activeCars.find(c => c.entry.mesh === group)?.entry;
-    if (entry?.pkt) { startFollow(entry); return; }
+    const idx   = activeCars.findIndex(c => c.entry.mesh === group);
+    const entry = activeCars[idx]?.entry;
+    if (entry?.pkt) { showContextMenu(entry, idx, e.clientX, e.clientY); return; }
   }
   if (followEntry) releaseFollow();
 });
@@ -793,7 +1353,11 @@ renderer.domElement.addEventListener('click', e => {
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 window.addEventListener('keydown', e => {
   if (e.code === 'Space')  { e.preventDefault(); togglePause(); }
-  if (e.code === 'Escape') { releaseFollow(); if (paused) togglePause(); }
+  if (e.code === 'Escape') {
+    hideContextMenu();
+    if (dissectedState) { reassemble(); if (paused) togglePause(); return; }
+    releaseFollow(); if (paused) togglePause();
+  }
 });
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -997,6 +1561,28 @@ function animate() {
           : pos.z > DEAD_Z.in;
         if (dead) { returnToPool(c.entry); activeCars.splice(i, 1); }
       }
+    }
+  }
+
+  // ── Dissect animation (runs even while paused) ───────────────────────────
+  if (dissectedState) {
+    const ds   = dissectedState;
+    ds.t       = Math.min(1, ds.t + dt * 1.2);
+    const ease = 1 - Math.pow(1 - ds.t, 3);   // cubic ease-out
+    const anchor = new THREE.Vector3();
+    for (const { pod, card, startScale, targetScale } of ds.pods) {
+      // Ancla 3D = punto a 8 unidades de la cámara que proyecta justo a la
+      // izquierda de la tarjeta correspondiente del panel
+      const rect = document.getElementById(card).getBoundingClientRect();
+      const px = rect.left - 130;
+      const py = rect.top + rect.height / 2;
+      anchor.set((px / innerWidth) * 2 - 1, -(py / innerHeight) * 2 + 1, 0.5)
+            .unproject(camera)
+            .sub(camera.position).normalize().multiplyScalar(9.5)
+            .add(camera.position);
+      pod.position.lerp(anchor, Math.min(1, 0.04 + ease * 6 * dt));
+      pod.scale.setScalar(startScale + (targetScale - startScale) * ease);
+      pod.rotation.y += dt * 0.7;   // rotación de vitrina
     }
   }
 

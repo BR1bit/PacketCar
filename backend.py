@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 try:
-    from scapy.all import sniff, IP, TCP, UDP, ICMP, ARP
+    from scapy.all import sniff, IP, TCP, UDP, ICMP, ARP, Ether
     SCAPY_AVAILABLE = True
 except ImportError:
     SCAPY_AVAILABLE = False
@@ -132,6 +132,10 @@ def classify_packet(pkt):
     dst = "?"
     size = len(pkt)
     info = ""
+    sport = 0
+    tcp_flags = "—"
+    mac_src = pkt[Ether].src if Ether in pkt else "N/D"
+    mac_dst = pkt[Ether].dst if Ether in pkt else "N/D"
 
     if IP in pkt:
         src = pkt[IP].src
@@ -149,11 +153,20 @@ def classify_packet(pkt):
             else:
                 proto = "TCP"
             info = f":{dport}"
+            fl = pkt[TCP].flags
+            flag_names = []
+            if fl & 0x02: flag_names.append("SYN")
+            if fl & 0x10: flag_names.append("ACK")
+            if fl & 0x08: flag_names.append("PSH")
+            if fl & 0x01: flag_names.append("FIN")
+            if fl & 0x04: flag_names.append("RST")
+            tcp_flags = " ".join(flag_names) or "—"
         elif UDP in pkt:
             dport = pkt[UDP].dport
-            if dport == 53 or pkt[UDP].sport == 53:
+            sport = pkt[UDP].sport
+            if dport == 53 or sport == 53:
                 proto = "DNS"
-            elif dport in (67, 68) or pkt[UDP].sport in (67, 68):
+            elif dport in (67, 68) or sport in (67, 68):
                 proto = "DHCP"
             else:
                 proto = "UDP"
@@ -184,6 +197,10 @@ def classify_packet(pkt):
         "color":     meta["color"],
         "speed":     meta["speed"] + random.uniform(-0.1, 0.2),
         "lane":      meta["lane"],
+        "sport":     sport,
+        "tcp_flags": tcp_flags,
+        "mac_src":   mac_src,
+        "mac_dst":   mac_dst,
         "ts":        time.time(),
     }
 
@@ -219,6 +236,11 @@ DEMO_REMOTE = [
     "23.1.0.1",       # Akamai
 ]
 
+def _fake_mac():
+    return ":".join(f"{random.randint(0,255):02x}" for _ in range(6))
+
+_TCP_FLAG_COMBOS = ["SYN", "ACK", "SYN ACK", "PSH ACK", "FIN ACK", "ACK"]
+
 async def demo_generator():
     global _packet_id
     while True:
@@ -235,19 +257,28 @@ async def demo_generator():
         )
 
         service = identify_service(dst) if direction == "out" else identify_service(src)
+        sport   = random.randint(1024, 65535) if proto not in ("ARP",) else 0
+        dport_map = {"HTTP":80,"HTTPS":443,"SSH":22,"DNS":53,"DHCP":67}
+        info    = f":{dport_map.get(proto, sport)}" if sport else ""
+        tcp_flags = random.choice(_TCP_FLAG_COMBOS) if proto in ("TCP","HTTP","HTTPS","SSH") else "—"
+
         pkt = {
             "id":        _packet_id,
             "proto":     proto,
             "src":       src,
             "dst":       dst,
             "size":      random.randint(40, 1400),
-            "info":      "",
+            "info":      info,
             "direction": direction,
             "service":   service,
             "type":      meta["type"],
             "color":     meta["color"],
             "speed":     meta["speed"] + random.uniform(-0.1, 0.3),
             "lane":      meta["lane"],
+            "sport":     sport,
+            "tcp_flags": tcp_flags,
+            "mac_src":   _fake_mac(),
+            "mac_dst":   _fake_mac(),
             "ts":        time.time(),
             "demo":      True,
         }

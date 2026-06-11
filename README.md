@@ -7,16 +7,31 @@ Visualizador de tráfico de red en tiempo real con escena 3D. Los paquetes de tu
 ## Características
 
 - **Tráfico bidireccional** — carriles separados para paquetes salientes (→) y entrantes (←)
-- **11 protocolos** — TCP, UDP, ICMP, DNS, HTTP, HTTPS, SSH, DHCP, ARP y OTRO, cada uno con vehículo y color único
+- **10 protocolos** — TCP, UDP, ICMP, DNS, HTTP, HTTPS, SSH, DHCP, ARP y OTRO, cada uno con vehículo y color único
+- **Vehículos detallados** — carrocerías facetadas, faros y luces traseras emisivas, paragolpes, alerón en el deportivo, banda de cuadros en el taxi, chimenea en el camión, moto con piloto
+- **💥 Desarmar un paquete** — clic en un auto y elige *Desarmar*: el vehículo se despieza en 4 objetos que representan las capas de red (ver tabla abajo)
 - **Skyline dinámico** — edificios de Google, Netflix, AWS, Cloudflare, Meta, Microsoft, Apple, GitHub, Akamai y Spotify que pulsan al recibir tráfico
 - **Autos doblan al edificio** — los paquetes salientes giran hacia el edificio del servicio destino y desaparecen
-- **Seguir un auto** — clic sobre cualquier auto para activar la cámara de seguimiento
+- **Seguir un auto** — cámara de persecución detrás de cualquier vehículo
 - **Cámara libre** — arrastra el ratón para rotar el escenario, scroll para zoom, drag vertical para altura
 - **Modo pausa / órbita** — pausa el tráfico y explora la escena con órbita completa
 - **Filtros de protocolo** — activa o desactiva cada protocolo desde el panel de control
 - **Lluvia** — 2000 partículas de lluvia animadas
 - **Modo demo** — si no se ejecuta con permisos de captura, genera tráfico simulado automáticamente
 - **Feed en vivo** — panel lateral con el historial de paquetes recientes
+
+---
+
+## 💥 Desarmar: la analogía del auto
+
+Al desarmar un auto, cada parte representa una capa del paquete de red:
+
+| Parte del auto | Capa | Datos mostrados |
+|---|---|---|
+| 👥 **Personas** | L7 Aplicación | Servicio destino, dirección, info — más bytes = más pasajeros |
+| 🚗 **Carrocería** | L4 Transporte | Protocolo, puertos, tamaño, flags TCP |
+| 🔢 **Matrícula** | L3 Red | Chapa patente con la **dirección IP** escrita |
+| 🔩 **Chasis** | L2 Enlace | Bastidor con placa grabada con la **MAC** (número de chasis) |
 
 ---
 
@@ -68,9 +83,10 @@ Abre el navegador en [http://localhost:8000](http://localhost:8000)
 | Rotar escena izquierda/derecha | Arrastrar ratón horizontalmente |
 | Subir/bajar cámara | Arrastrar ratón verticalmente |
 | Zoom | Scroll |
-| Seguir un auto | Clic sobre el auto |
+| Menú de auto (Seguir / Desarmar) | Clic sobre el auto |
+| Rearmar un auto desarmado | Botón 🔧 REARMAR o `Esc` |
 | Soltar seguimiento | Clic en espacio vacío o `Esc` |
-| Pausa / cámara libre | Botón ⏸ PAUSA |
+| Pausa / cámara libre | Botón ⏸ PAUSA o `Espacio` |
 | Filtrar protocolos | Botones de protocolo en el panel |
 
 ---
