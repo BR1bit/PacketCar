@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>PACKETCAR — Red en 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0f; overflow: hidden; font-family: 'Courier New', monospace; }
+  #canvas-container { width: 100vw; height: 100vh; }
+
+  /* ── Top HUD ── */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 14px 18px; pointer-events: none; z-index: 10;
+  }
+  #title { font-size: 20px; font-weight: bold; letter-spacing: 4px; color: #fff; text-shadow: 0 0 18px #6366f1; }
+  #title span { color: #6366f1; }
+
+  #stats { display: flex; gap: 10px; }
+  .stat {
+    background: rgba(10,10,20,.8); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px; padding: 5px 12px; text-align: center; backdrop-filter: blur(6px);
+  }
+  .stat-val { font-size: 20px; font-weight: bold; color: #a5b4fc; }
+  .stat-lbl { font-size: 9px; color: #6b7280; letter-spacing: 1px; }
+  .stat.out .stat-val { color: #86efac; }
+  .stat.in  .stat-val { color: #fca5a5; }
+
+  /* ── Filter bar ── */
+  #filter-bar {
+    position: fixed; top: 62px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 6px; z-index: 10;
+    background: rgba(10,10,20,.82); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 24px; padding: 6px 12px; backdrop-filter: blur(8px);
+  }
+  #filter-label { font-size: 9px; color: #6b7280; letter-spacing: 2px; margin-right: 4px; }
+  .proto-btn {
+    font-family: 'Courier New', monospace; font-size: 10px; font-weight: bold;
+    letter-spacing: 1px; cursor: pointer; border: 1px solid transparent;
+    border-radius: 12px; padding: 3px 9px; transition: all .18s;
+    background: rgba(255,255,255,.06); color: #9ca3af;
+  }
+  .proto-btn.active {
+    background: color-mix(in srgb, var(--c) 20%, transparent);
+    border-color: color-mix(in srgb, var(--c) 60%, transparent);
+    color: var(--c);
+  }
+  .filter-sep { width: 1px; height: 16px; background: rgba(255,255,255,.12); margin: 0 4px; }
+  #btn-pause {
+    font-family: 'Courier New', monospace; font-size: 10px; font-weight: bold;
+    letter-spacing: 1px; cursor: pointer; border: 1px solid rgba(255,255,255,.2);
+    border-radius: 12px; padding: 3px 10px; background: rgba(255,255,255,.06);
+    color: #d1d5db; transition: all .18s;
+  }
+  #btn-pause:hover { background: rgba(255,255,255,.12); }
+  #btn-pause.paused {
+    background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.5); color: #fca5a5;
+  }
+
+  /* ── Follow banner ── */
+  #follow-hud {
+    position: fixed; top: 110px; left: 50%; transform: translateX(-50%);
+    background: rgba(99,102,241,.18); border: 1px solid rgba(99,102,241,.5);
+    color: #c7d2fe; font-size: 11px; letter-spacing: 1px;
+    padding: 5px 18px; border-radius: 20px; z-index: 10; display: none;
+    backdrop-filter: blur(6px);
+  }
+  #follow-hud kbd {
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+    border-radius: 4px; padding: 1px 5px; font-size: 10px;
+  }
+
+  /* ── Orbit hint ── */
+  #orbit-hint {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    color: #6b7280; font-size: 10px; letter-spacing: 1px; z-index: 10;
+    display: none; pointer-events: none;
+  }
+
+  /* ── Direction bar ── */
+  #dir-bar {
+    position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 10;
+    background: rgba(10,10,20,.75); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 20px; padding: 5px 18px; backdrop-filter: blur(6px);
+    font-size: 11px; letter-spacing: 1px;
+  }
+  .dir-out { color: #86efac; }
+  .dir-in  { color: #fca5a5; }
+  .dir-sep { color: #4b5563; }
+
+  /* ── Legend ── */
+  #legend {
+    position: fixed; bottom: 16px; left: 16px;
+    background: rgba(10,10,20,.85); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(8px); z-index: 10;
+  }
+  #legend h3 { color: #9ca3af; font-size: 9px; letter-spacing: 2px; margin-bottom: 6px; }
+  .leg-item { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 11px; color: #d1d5db; }
+  .leg-dot { width: 12px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── Feed ── */
+  #feed {
+    position: fixed; bottom: 16px; right: 16px;
+    width: 300px; max-height: 200px; overflow: hidden;
+    background: rgba(10,10,20,.85); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 10px; padding: 8px 12px; backdrop-filter: blur(8px); z-index: 10;
+  }
+  #feed h3 { color: #9ca3af; font-size: 9px; letter-spacing: 2px; margin-bottom: 5px; }
+  .feed-line {
+    font-size: 10px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.04);
+  }
+  .feed-line .dir { font-size: 9px; margin-right: 3px; }
+
+  /* ── Demo badge ── */
+  #demo-badge {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.4);
+    color: #fcd34d; font-size: 10px; letter-spacing: 1px; padding: 3px 14px;
+    border-radius: 20px; z-index: 20; display: none;
+  }
+
+  /* ── Tooltip ── */
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 30;
+    background: rgba(8,8,18,.93); border: 1px solid rgba(255,255,255,.15);
+    border-radius: 10px; padding: 10px 14px; min-width: 200px;
+    backdrop-filter: blur(10px); display: none;
+    box-shadow: 0 4px 24px rgba(0,0,0,.6);
+  }
+  .tt-proto { font-size: 13px; font-weight: bold; letter-spacing: 2px; margin-bottom: 6px; }
+  .tt-dir   { font-size: 10px; border-radius: 10px; padding: 1px 8px; display: inline-block; margin-bottom: 6px; }
+  .tt-dir.out { background: rgba(134,239,172,.15); color: #86efac; }
+  .tt-dir.in  { background: rgba(252,165,165,.15); color: #fca5a5; }
+  .tt-row { font-size: 11px; color: #9ca3af; margin: 2px 0; }
+  .tt-row b { color: #e2e8f0; }
+  .tt-sep { border: none; border-top: 1px solid rgba(255,255,255,.08); margin: 6px 0; }
+</style>
+</head>
+<body>
+<div id="canvas-container"></div>
+
+<div id="hud">
+  <div id="title">PACKET<span>CAR</span></div>
+  <div id="stats">
+    <div class="stat"><div class="stat-val" id="s-total">0</div><div class="stat-lbl">TOTAL</div></div>
+    <div class="stat out"><div class="stat-val" id="s-out">0</div><div class="stat-lbl">SALIENTE ↗</div></div>
+    <div class="stat in"><div class="stat-val" id="s-in">0</div><div class="stat-lbl">ENTRANTE ↙</div></div>
+    <div class="stat"><div class="stat-val" id="s-rate">0</div><div class="stat-lbl">PKT/S</div></div>
+    <div class="stat"><div class="stat-val" id="s-active">0</div><div class="stat-lbl">EN RUTA</div></div>
+  </div>
+</div>
+
+<div id="filter-bar">
+  <span id="filter-label">FILTROS</span>
+  <button class="proto-btn active" data-proto="TCP"   style="--c:#3B82F6">TCP</button>
+  <button class="proto-btn active" data-proto="UDP"   style="--c:#F59E0B">UDP</button>
+  <button class="proto-btn active" data-proto="ICMP"  style="--c:#EF4444">ICMP</button>
+  <button class="proto-btn active" data-proto="DNS"   style="--c:#FBBF24">DNS</button>
+  <button class="proto-btn active" data-proto="HTTP"  style="--c:#10B981">HTTP</button>
+  <button class="proto-btn active" data-proto="HTTPS" style="--c:#6366F1">HTTPS</button>
+  <button class="proto-btn active" data-proto="SSH"   style="--c:#14B8A6">SSH</button>
+  <button class="proto-btn active" data-proto="DHCP"  style="--c:#F472B6">DHCP</button>
+  <button class="proto-btn active" data-proto="ARP"   style="--c:#8B5CF6">ARP</button>
+  <button class="proto-btn active" data-proto="OTHER" style="--c:#6B7280">OTRO</button>
+  <div class="filter-sep"></div>
+  <button id="btn-pause">⏸ PAUSA</button>
+</div>
+
+<div id="follow-hud">
+  📷 SIGUIENDO <span id="follow-proto-label"></span> — <kbd>ESC</kbd> para salir · clic en otro auto para cambiar
+</div>
+
+<div id="orbit-hint">drag para orbitar · scroll para zoom</div>
+
+<div id="dir-bar">
+  <span class="dir-in">← ENTRANTE</span>
+  <span class="dir-sep">|</span>
+  <span class="dir-out">SALIENTE →</span>
+</div>
+
+<div id="legend">
+  <h3>PROTOCOLO</h3>
+  <div class="leg-item"><div class="leg-dot" style="background:#3B82F6"></div>TCP — sedán</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#F59E0B"></div>UDP — deportivo</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#EF4444"></div>ICMP — moto</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#FBBF24"></div>DNS — taxi</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#10B981"></div>HTTP — camión</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#6366F1"></div>HTTPS — camión</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#14B8A6"></div>SSH — deportivo</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#F472B6"></div>DHCP — furgoneta</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#8B5CF6"></div>ARP — furgoneta</div>
+</div>
+
+<div id="feed">
+  <h3>TRÁFICO EN VIVO</h3>
+  <div id="feed-lines"></div>
+</div>
+
+<div id="demo-badge">⚠ MODO DEMO — usa sudo para captura real</div>
+
+<div id="tooltip">
+  <div class="tt-proto" id="tt-proto"></div>
+  <div class="tt-dir"   id="tt-dir"></div>
+  <hr class="tt-sep">
+  <div class="tt-row"><b>SRC </b><span id="tt-src"></span></div>
+  <div class="tt-row"><b>DST </b><span id="tt-dst"></span></div>
+  <hr class="tt-sep">
+  <div class="tt-row"><b>TAM </b><span id="tt-size"></span></div>
+  <div class="tt-row"><b>VEH </b><span id="tt-type"></span></div>
+  <div class="tt-row" id="tt-svc-row"><b>SVC  </b><span id="tt-svc"></span></div>
+  <div class="tt-row" id="tt-info-row"><b>INFO </b><span id="tt-info"></span></div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ── Renderer ─────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = false;
+renderer.toneMapping = THREE.ReinhardToneMapping;
+renderer.toneMappingExposure = 2.8;
+document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x0d1a35);
+scene.fog = new THREE.FogExp2(0x0d1a35, 0.009);
+
+const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(0, 6, 20);
+camera.lookAt(0, 0.5, -55);
+
+// ── Lighting ──────────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 6));
+const moon = new THREE.DirectionalLight(0xeef0ff, 4.0);
+moon.position.set(-5, 20, 10);
+scene.add(moon);
+const fill = new THREE.DirectionalLight(0xfff0dd, 2.0);
+fill.position.set(15, 5, -10);
+scene.add(fill);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 3.0));
+
+// ── Road ─────────────────────────────────────────────────────────────────────
+const ROAD_LEN  = 250;
+const LANE_W    = 2.1;
+const NUM_LANES = 2;
+const DIVIDER_W = 1.4;
+const SHOULDER  = 0.9;
+const HALF_ROAD = NUM_LANES * LANE_W + DIVIDER_W / 2;
+const ROAD_W    = HALF_ROAD * 2 + SHOULDER * 2;
+const roadZ     = -ROAD_LEN / 2 + 18;
+
+const roadMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(ROAD_W, ROAD_LEN),
+  new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.88 })
+);
+roadMesh.rotation.x = -Math.PI / 2;
+roadMesh.position.z = roadZ;
+scene.add(roadMesh);
+
+for (const side of [-1, 1]) {
+  const sh = new THREE.Mesh(
+    new THREE.PlaneGeometry(SHOULDER, ROAD_LEN),
+    new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.98 })
+  );
+  sh.rotation.x = -Math.PI / 2;
+  sh.position.set(side * (HALF_ROAD + SHOULDER / 2), 0.003, roadZ);
+  scene.add(sh);
+}
+
+const divMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(DIVIDER_W, ROAD_LEN),
+  new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.95 })
+);
+divMesh.rotation.x = -Math.PI / 2;
+divMesh.position.set(0, 0.006, roadZ);
+scene.add(divMesh);
+
+// ── Road markings ─────────────────────────────────────────────────────────────
+const whiteMat  = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.7 });
+const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffcc00, emissiveIntensity: 1.2 });
+
+for (const side of [-1, 1]) {
+  const el = new THREE.Mesh(new THREE.PlaneGeometry(0.1, ROAD_LEN), whiteMat);
+  el.rotation.x = -Math.PI / 2;
+  el.position.set(side * (HALF_ROAD + SHOULDER - 0.05), 0.01, roadZ);
+  scene.add(el);
+}
+for (const offset of [-0.18, 0.18]) {
+  const yl = new THREE.Mesh(new THREE.PlaneGeometry(0.09, ROAD_LEN), yellowMat);
+  yl.rotation.x = -Math.PI / 2;
+  yl.position.set(offset, 0.01, roadZ);
+  scene.add(yl);
+}
+
+const dashH = 2.5, dashGap = 4.5;
+const dashCount = Math.floor(ROAD_LEN / (dashH + dashGap));
+for (const side of [-1, 1]) {
+  const lx = side * (DIVIDER_W / 2 + LANE_W);
+  for (let i = 0; i < dashCount; i++) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.09, dashH), whiteMat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(lx, 0.01, -i * (dashH + dashGap) + 14);
+    scene.add(m);
+  }
+}
+
+// ── Street lamps ──────────────────────────────────────────────────────────────
+const poleMat = new THREE.MeshStandardMaterial({ color: 0x444455 });
+const bulbMat = new THREE.MeshStandardMaterial({ color: 0xfff0aa, emissive: 0xfff0aa, emissiveIntensity: 4.0 });
+const poleGeo = new THREE.CylinderGeometry(0.06, 0.06, 4.2, 6);
+const bulbGeo = new THREE.SphereGeometry(0.11, 6, 6);
+const lampZs  = [10, -20, -50, -80, -110, -140, -170, -200];
+let lightIdx  = 0;
+
+for (const z of lampZs) {
+  for (const side of [-1, 1]) {
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.position.set(side * (HALF_ROAD + SHOULDER + 0.3), 2.1, z);
+    scene.add(pole);
+    const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+    bulb.position.set(side * (HALF_ROAD + SHOULDER - 0.2), 4.3, z);
+    scene.add(bulb);
+    const pl = new THREE.PointLight(0xffe8aa, 1.8, 22);
+    pl.position.copy(bulb.position);
+    scene.add(pl);
+    lightIdx++;
+  }
+}
+
+// ── Stars ─────────────────────────────────────────────────────────────────────
+{
+  const count = 600, pos = new Float32Array(count * 3);
+  for (let i = 0; i < count * 3; i += 3) {
+    pos[i]   = (Math.random() - 0.5) * 350;
+    pos[i+1] = Math.random() * 70 + 6;
+    pos[i+2] = (Math.random() - 0.5) * 350;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.13, sizeAttenuation: true })));
+}
+
+// ── City skyline ─────────────────────────────────────────────────────────────
+(function buildCity() {
+  const mats = [
+    new THREE.MeshStandardMaterial({ color: 0x141420, roughness: 0.8, metalness: 0.3 }),
+    new THREE.MeshStandardMaterial({ color: 0x181825, roughness: 0.7, metalness: 0.4 }),
+    new THREE.MeshStandardMaterial({ color: 0x0f1520, roughness: 0.9, metalness: 0.1 }),
+    new THREE.MeshStandardMaterial({ color: 0x1a1e2c, roughness: 0.75, metalness: 0.35 }),
+  ];
+  const winPos = [], winCol = [];
+  // deterministic noise
+  const rng = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5; return x - Math.floor(x); };
+
+  for (const side of [-1, 1]) {
+    const baseX = side * (HALF_ROAD + SHOULDER + 7);
+    let cur = 0;
+    while (cur < 185) {
+      const w  = 4  + rng(cur * side)       * 8;
+      const d  = 4  + rng(cur * side + 1)   * 5;
+      const h  = 6  + rng(cur * side + 2)   * 16;
+      const sx = side * (2 + rng(cur + 3)   * 9);
+      const z  = -(cur + 65);
+      const x  = baseX + sx;
+
+      const build = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        mats[Math.floor(rng(cur) * mats.length)]
+      );
+      build.position.set(x, h / 2, z);
+      scene.add(build);
+
+      // Windows — added to shared Points array
+      const cols = Math.max(2, Math.floor(w / 1.5));
+      const rows = Math.max(2, Math.floor(h / 2.2));
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (rng(r * 31 + c * 17 + cur * 3) < 0.28) continue;
+          winPos.push(
+            x + (-w / 2 + (c + 0.5) * w / cols),
+            1.6 + r * 2.2,
+            z - side * (d / 2 + 0.1)
+          );
+          const warm = rng(r * 13 + c * 7 + cur) > 0.22;
+          winCol.push(...(warm ? [1.0, 0.88, 0.62] : [0.62, 0.80, 1.0]));
+        }
+      }
+      cur += w * 0.65 + 1.5 + rng(cur * 9) * 4;
+    }
+  }
+
+  const wg = new THREE.BufferGeometry();
+  wg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(winPos), 3));
+  wg.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(winCol), 3));
+  scene.add(new THREE.Points(wg,
+    new THREE.PointsMaterial({ size: 0.42, vertexColors: true, sizeAttenuation: true, transparent: true, opacity: 0.92 })
+  ));
+})();
+
+// ── Landmark buildings (servicios conocidos) ──────────────────────────────────
+const serviceBuildings = new Map(); // service → { sprite, ring, ringMat, pulseT }
+
+function makeLabel(text, hexColor) {
+  const W = 512, H = 96;
+  const cv  = document.createElement('canvas');
+  cv.width  = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  // Background
+  ctx.fillStyle = 'rgba(6,6,16,0.82)';
+  ctx.fillRect(0, 0, W, H);
+  // Colored border
+  ctx.strokeStyle = hexColor;
+  ctx.lineWidth   = 4;
+  ctx.strokeRect(3, 3, W - 6, H - 6);
+  // Text
+  ctx.font          = 'bold 44px Arial';
+  ctx.fillStyle     = hexColor;
+  ctx.textAlign     = 'center';
+  ctx.textBaseline  = 'middle';
+  ctx.fillText(text, W / 2, H / 2);
+  const tex = new THREE.CanvasTexture(cv);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+  const spr = new THREE.Sprite(mat);
+  spr.scale.set(10, 1.9, 1);
+  return spr;
+}
+
+const LANDMARKS = [
+  // Lado derecho — destinos salientes
+  { service:'Google',     side: 1, z: -90,  h:24, w:10, d:8, body:0x1a2e5c, lc:'#4285f4' },
+  { service:'Netflix',    side: 1, z:-128,  h:20, w: 9, d:7, body:0x5a0d0d, lc:'#e50914' },
+  { service:'AWS',        side: 1, z:-164,  h:23, w:10, d:8, body:0x2d1800, lc:'#ff9900' },
+  { service:'Cloudflare', side: 1, z:-198,  h:18, w: 8, d:7, body:0x2a1200, lc:'#f48120' },
+  { service:'Meta',       side: 1, z:-215,  h:22, w:10, d:8, body:0x0d1a3d, lc:'#0082fb' },
+  // Lado izquierdo — fuentes entrantes
+  { service:'Microsoft',  side:-1, z: -90,  h:23, w:10, d:8, body:0x0a1c1c, lc:'#00a4ef' },
+  { service:'Apple',      side:-1, z:-128,  h:22, w: 9, d:7, body:0x1c1c1c, lc:'#cccccc' },
+  { service:'GitHub',     side:-1, z:-164,  h:19, w: 9, d:7, body:0x0d0d1a, lc:'#f0f6fc' },
+  { service:'Akamai',     side:-1, z:-198,  h:17, w: 8, d:7, body:0x1a1a08, lc:'#009bde' },
+  { service:'Spotify',    side:-1, z:-215,  h:20, w:10, d:8, body:0x001a06, lc:'#1db954' },
+];
+
+const _ringGeo = new THREE.RingGeometry(1, 1.4, 32);
+
+for (const lm of LANDMARKS) {
+  const x = lm.side * (HALF_ROAD + SHOULDER + 10);
+
+  // Cuerpo del edificio
+  const buildMat = new THREE.MeshStandardMaterial({
+    color: lm.body, roughness: 0.6, metalness: 0.5,
+    emissive: lm.body, emissiveIntensity: 0.15,
+  });
+  const build = new THREE.Mesh(new THREE.BoxGeometry(lm.w, lm.h, lm.d), buildMat);
+  build.position.set(x, lm.h / 2, lm.z);
+  scene.add(build);
+
+  // Ventanas con el color del servicio
+  const lc3 = new THREE.Color(lm.lc);
+  const winPos = [], winCol = [];
+  const cols = Math.max(2, Math.floor(lm.w / 1.5));
+  const rows = Math.max(2, Math.floor(lm.h / 2.0));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (Math.random() < 0.28) continue;
+      winPos.push(x + (-lm.w/2 + (c + 0.5) * lm.w / cols), 1.5 + r * 2.0, lm.z - lm.side * (lm.d / 2 + 0.12));
+      winCol.push(lc3.r, lc3.g, lc3.b);
+    }
+  }
+  const wg = new THREE.BufferGeometry();
+  wg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(winPos), 3));
+  wg.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(winCol), 3));
+  scene.add(new THREE.Points(wg,
+    new THREE.PointsMaterial({ size: 0.45, vertexColors: true, sizeAttenuation: true })
+  ));
+
+  // Etiqueta sprite encima del edificio
+  const sprite = makeLabel(lm.service, lm.lc);
+  sprite.position.set(x, lm.h + 2.8, lm.z);
+  scene.add(sprite);
+
+  // Anillo de pulso en la base
+  const ringMat = new THREE.MeshBasicMaterial({ color: lm.lc, transparent: true, opacity: 0, side: THREE.DoubleSide });
+  const ring    = new THREE.Mesh(_ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(x, 0.15, lm.z);
+  ring.visible = false;
+  scene.add(ring);
+
+  serviceBuildings.set(lm.service, { sprite, ring, ringMat, pulseT: null });
+}
+
+// ── Rain ──────────────────────────────────────────────────────────────────────
+const RAIN_COUNT = 2000;
+const STREAK_LEN = 0.5;
+const rainArr = new Float32Array(RAIN_COUNT * 6);
+const rainVel = new Float32Array(RAIN_COUNT);
+const RAIN_W  = 38;
+const RAIN_Z0 = 22;
+const RAIN_Z1 = -(ROAD_LEN - 22);
+
+for (let i = 0; i < RAIN_COUNT; i++) {
+  const x = (Math.random() - 0.5) * RAIN_W * 2;
+  const y = Math.random() * 30;
+  const z = RAIN_Z1 + Math.random() * (RAIN_Z0 - RAIN_Z1);
+  rainArr[i*6]   = x; rainArr[i*6+1] = y;            rainArr[i*6+2] = z;
+  rainArr[i*6+3] = x; rainArr[i*6+4] = y + STREAK_LEN; rainArr[i*6+5] = z;
+  rainVel[i] = 10 + Math.random() * 6;
+}
+const rainGeo = new THREE.BufferGeometry();
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainArr, 3));
+const rainLines = new THREE.LineSegments(rainGeo,
+  new THREE.LineBasicMaterial({ color: 0x99bbdd, transparent: true, opacity: 0.38 })
+);
+scene.add(rainLines);
+
+// ── Shared geometries ─────────────────────────────────────────────────────────
+const SHARED = {};
+function initShared() {
+  const bodyGeos = {
+    sedan:  new THREE.BoxGeometry(1.7, 0.48, 0.65),
+    sports: new THREE.BoxGeometry(1.8, 0.40, 0.55),
+    moto:   new THREE.BoxGeometry(1.3, 0.25, 0.28),
+    taxi:   new THREE.BoxGeometry(1.7, 0.48, 0.65),
+    truck:  new THREE.BoxGeometry(3.1, 0.52, 0.88),
+    van:    new THREE.BoxGeometry(2.2, 0.52, 0.78),
+  };
+  const cabGeos = {
+    sedan:  new THREE.BoxGeometry(0.88, 0.52, 0.58),
+    sports: new THREE.BoxGeometry(0.82, 0.40, 0.48),
+    moto:   null,
+    taxi:   new THREE.BoxGeometry(0.88, 0.52, 0.58),
+    truck:  new THREE.BoxGeometry(0.9,  0.80, 0.82),
+    van:    new THREE.BoxGeometry(2.1,  0.75, 0.72),
+  };
+  const wheelGeo   = new THREE.CylinderGeometry(0.20, 0.20, 0.16, 8);
+  const rimGeo     = new THREE.CylinderGeometry(0.09, 0.09, 0.18, 6);
+  const darkMat    = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+  const rimMat     = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.85, roughness: 0.25 });
+  const glassMat   = new THREE.MeshStandardMaterial({ color: 0x7799cc, roughness: 0.15, transparent: true, opacity: 0.55 });
+  const taxiTopMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 0.7 });
+  const taxiTopGeo = new THREE.BoxGeometry(0.45, 0.15, 0.05);
+  for (const [type, bodyGeo] of Object.entries(bodyGeos)) {
+    SHARED[type] = { bodyGeo, cabGeo: cabGeos[type], wheelGeo, rimGeo, darkMat, rimMat, glassMat, taxiTopMat, taxiTopGeo };
+  }
+}
+initShared();
+
+const PROTO_CFG = {
+  TCP:   { type:'sedan',  color:0x3B82F6, speed:1.0, lane:0 },
+  UDP:   { type:'sports', color:0xF59E0B, speed:1.6, lane:1 },
+  ICMP:  { type:'moto',   color:0xEF4444, speed:2.1, lane:0 },
+  DNS:   { type:'taxi',   color:0xFBBF24, speed:1.2, lane:0 },
+  HTTP:  { type:'truck',  color:0x10B981, speed:0.7, lane:1 },
+  HTTPS: { type:'truck',  color:0x6366F1, speed:0.75, lane:1 },
+  SSH:   { type:'sports', color:0x14B8A6, speed:1.4,  lane:0 },
+  DHCP:  { type:'van',    color:0xF472B6, speed:0.8,  lane:1 },
+  ARP:   { type:'van',    color:0x8B5CF6, speed:0.9,  lane:1 },
+  OTHER: { type:'sedan',  color:0x6B7280, speed:1.0, lane:0 },
+};
+
+function laneX(dir, laneIdx) {
+  const x = DIVIDER_W / 2 + LANE_W / 2 + laneIdx * LANE_W;
+  return dir === 'out' ? x : -x;
+}
+
+// ── Object pool ───────────────────────────────────────────────────────────────
+const pool = {};
+const MAX_CARS = 28;
+
+function getFromPool(type, color) {
+  const key = type + '_' + color;
+  if (pool[key]?.length > 0) {
+    const e = pool[key].pop();
+    e.mesh.visible = true;
+    return e;
+  }
+  return buildCarEntry(type, color);
+}
+
+function returnToPool(entry) {
+  if (followEntry === entry) releaseFollow();
+  entry.mesh.visible = false;
+  entry.pkt = null;
+  entry.mesh.userData.pkt = null;
+  scene.remove(entry.mesh);
+  const key = entry.type + '_' + entry.color;
+  if (!pool[key]) pool[key] = [];
+  pool[key].push(entry);
+}
+
+function buildCarEntry(type, color) {
+  const s = SHARED[type] || SHARED['sedan'];
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.38, metalness: 0.55 });
+  const bh = s.bodyGeo.parameters.height;
+
+  const body = new THREE.Mesh(s.bodyGeo, bodyMat);
+  body.position.y = bh / 2;
+  group.add(body);
+
+  if (s.cabGeo) {
+    const ch = s.cabGeo.parameters.height;
+    const cab = new THREE.Mesh(s.cabGeo, type === 'van' ? bodyMat : s.glassMat);
+    const offX = type === 'truck'
+      ? -s.bodyGeo.parameters.width / 2 + s.cabGeo.parameters.width / 2 + 0.05
+      : 0;
+    cab.position.set(offX, bh + ch / 2, 0);
+    group.add(cab);
+    if (type === 'taxi') {
+      const top = new THREE.Mesh(s.taxiTopGeo, s.taxiTopMat);
+      top.position.set(0, bh + ch + 0.1, 0);
+      group.add(top);
+    }
+  }
+
+  const wz = s.bodyGeo.parameters.depth / 2 + 0.02;
+  const wxList = type === 'truck'
+    ? [-1.1, 0.0, 1.1]
+    : [-s.bodyGeo.parameters.width * 0.32, s.bodyGeo.parameters.width * 0.32];
+  for (const wx of wxList) {
+    for (const wside of [-wz, wz]) {
+      const w = new THREE.Mesh(s.wheelGeo, s.darkMat);
+      w.rotation.x = Math.PI / 2;
+      w.position.set(wx, 0.20, wside);
+      group.add(w);
+      const rim = new THREE.Mesh(s.rimGeo, s.rimMat);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.copy(w.position);
+      group.add(rim);
+    }
+  }
+
+  group.traverse(child => { child.userData.carGroup = group; });
+  return { mesh: group, type, color, pkt: null };
+}
+
+const SPAWN_Z = { out: 21, in: -(ROAD_LEN - 21) };
+const DEAD_Z  = { out: -(ROAD_LEN - 20), in: 24 };
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const activeCars   = [];
+const activeProtos = new Set(['TCP','UDP','ICMP','DNS','HTTP','HTTPS','SSH','DHCP','ARP','OTHER']);
+let   paused       = false;
+let   followEntry  = null;
+
+// ── Protocol filter buttons ────────────────────────────────────────────────────
+document.querySelectorAll('.proto-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.proto;
+    if (activeProtos.has(p)) {
+      activeProtos.delete(p);
+      btn.classList.remove('active');
+    } else {
+      activeProtos.add(p);
+      btn.classList.add('active');
+    }
+  });
+});
+
+// ── Pause button ──────────────────────────────────────────────────────────────
+const btnPause   = document.getElementById('btn-pause');
+const orbitHint  = document.getElementById('orbit-hint');
+
+function togglePause() {
+  paused = !paused;
+  btnPause.textContent = paused ? '▶ REANUDAR' : '⏸ PAUSA';
+  btnPause.classList.toggle('paused', paused);
+  orbitHint.style.display = paused ? 'block' : 'none';
+  if (paused) {
+    initOrbit();
+  } else {
+    // sync camTheta/camRadius from current camera position so there's no jump
+    camTheta  = Math.atan2(camera.position.x, camera.position.z - CAM_CZ);
+    camTheta  = Math.max(-1.2, Math.min(1.2, camTheta));
+    camRadius = Math.max(8, Math.min(100,
+      Math.sqrt(camera.position.x ** 2 + (camera.position.z - CAM_CZ) ** 2)
+    ));
+    camY = Math.max(1, Math.min(35, camera.position.y));
+  }
+}
+btnPause.addEventListener('click', togglePause);
+
+// ── Follow mode ───────────────────────────────────────────────────────────────
+const followHud   = document.getElementById('follow-hud');
+const followLabel = document.getElementById('follow-proto-label');
+
+function startFollow(entry) {
+  followEntry = entry;
+  const pkt = entry.pkt;
+  const hex  = '#' + pkt.color.toString(16).padStart(6, '0');
+  followLabel.innerHTML = `<span style="color:${hex};font-weight:bold">${pkt.proto}</span>`;
+  followHud.style.display = 'block';
+  hideTooltip();
+}
+
+function releaseFollow() {
+  followEntry = null;
+  followHud.style.display = 'none';
+}
+
+// ── Orbit controls (active when paused) ───────────────────────────────────────
+let orbitTheta  = 0;
+let orbitPhi    = 0.45;
+let orbitRadius = 25;
+const orbitCenter = new THREE.Vector3(0, 1, -15);
+let orbiting  = false, lastMX = 0, lastMY = 0;
+let isDragging = false, dragMoved = false;
+let camTheta   = 0;   // horizontal rotation for normal (non-paused) camera
+let camRadius  = 30;  // zoom distance
+let camY       = 7;   // vertical height
+const CAM_CZ   = -18;
+
+function initOrbit() {
+  const rel = camera.position.clone().sub(orbitCenter);
+  orbitRadius = Math.max(rel.length(), 5);
+  orbitTheta  = Math.atan2(rel.x, rel.z);
+  orbitPhi    = Math.asin(Math.min(Math.max(rel.y / orbitRadius, -1), 1));
+}
+
+function applyOrbitCamera() {
+  camera.position.set(
+    orbitCenter.x + orbitRadius * Math.cos(orbitPhi) * Math.sin(orbitTheta),
+    orbitCenter.y + orbitRadius * Math.sin(orbitPhi),
+    orbitCenter.z + orbitRadius * Math.cos(orbitPhi) * Math.cos(orbitTheta)
+  );
+  camera.lookAt(orbitCenter);
+}
+
+renderer.domElement.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  isDragging = true; dragMoved = false;
+  lastMX = e.clientX; lastMY = e.clientY;
+  if (paused && !followEntry) orbiting = true;
+});
+window.addEventListener('mousemove', e => {
+  const dx = e.clientX - lastMX, dy = e.clientY - lastMY;
+  if (isDragging && Math.abs(dx) > 3) dragMoved = true;
+  if (isDragging && !followEntry && !paused) {
+    camTheta -= dx * 0.006;
+    camTheta   = Math.max(-1.2, Math.min(1.2, camTheta));
+    camY      -= dy * 0.04;
+    camY       = Math.max(1, Math.min(35, camY));
+  }
+  if (orbiting) {
+    orbitTheta -= dx * 0.008;
+    orbitPhi    = Math.max(-1.2, Math.min(1.2, orbitPhi + dy * 0.006));
+  }
+  if (isDragging || orbiting) { lastMX = e.clientX; lastMY = e.clientY; }
+});
+window.addEventListener('mouseup', () => { isDragging = false; orbiting = false; });
+renderer.domElement.addEventListener('wheel', e => {
+  if (paused) {
+    orbitRadius = Math.max(3, Math.min(120, orbitRadius + e.deltaY * 0.05));
+  } else if (!followEntry) {
+    camRadius = Math.max(8, Math.min(100, camRadius + e.deltaY * 0.05));
+  }
+}, { passive: true });
+
+// ── Click: follow car or release ──────────────────────────────────────────────
+renderer.domElement.addEventListener('click', e => {
+  if (dragMoved) { dragMoved = false; return; }
+  const mouse = new THREE.Vector2(
+     (e.clientX / innerWidth)  * 2 - 1,
+    -(e.clientY / innerHeight) * 2 + 1
+  );
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(mouse, camera);
+
+  const targets = [];
+  for (const c of activeCars) {
+    const ch = c.entry.mesh.children;
+    for (let i = 0; i < Math.min(ch.length, 2); i++) {
+      if (ch[i].isMesh) targets.push(ch[i]);
+    }
+  }
+  const hits = ray.intersectObjects(targets, false);
+  if (hits.length > 0) {
+    const group = hits[0].object.userData.carGroup;
+    const entry = activeCars.find(c => c.entry.mesh === group)?.entry;
+    if (entry?.pkt) { startFollow(entry); return; }
+  }
+  if (followEntry) releaseFollow();
+});
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space')  { e.preventDefault(); togglePause(); }
+  if (e.code === 'Escape') { releaseFollow(); if (paused) togglePause(); }
+});
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+let total = 0, outCount = 0, inCount = 0, recent = [];
+function updateStats() {
+  const now = Date.now();
+  recent = recent.filter(t => now - t < 1000);
+  document.getElementById('s-total').textContent  = total;
+  document.getElementById('s-out').textContent    = outCount;
+  document.getElementById('s-in').textContent     = inCount;
+  document.getElementById('s-rate').textContent   = recent.length;
+  document.getElementById('s-active').textContent = activeCars.length;
+}
+
+// ── Feed ──────────────────────────────────────────────────────────────────────
+const feedEl = document.getElementById('feed-lines');
+function addFeed(pkt) {
+  const d = document.createElement('div');
+  d.className = 'feed-line';
+  const hex   = '#' + pkt.color.toString(16).padStart(6, '0');
+  const arrow = pkt.direction === 'out' ? '↗' : '↙';
+  const col   = pkt.direction === 'out' ? '#86efac' : '#fca5a5';
+  d.innerHTML = `<span class="dir" style="color:${col}">${arrow}</span><span style="color:${hex}">${pkt.proto}</span> ${pkt.src} → ${pkt.dst} (${pkt.size}B)`;
+  feedEl.prepend(d);
+  if (feedEl.children.length > 8) feedEl.lastChild.remove();
+}
+
+// ── Demo badge ────────────────────────────────────────────────────────────────
+let demoBadgeShown = false;
+
+// ── Spawn ─────────────────────────────────────────────────────────────────────
+const pktBacklog = [];
+
+function spawnCar(pkt) {
+  if (activeCars.length >= MAX_CARS) return;
+  if (!activeProtos.has(pkt.proto)) return;
+
+  const cfg   = PROTO_CFG[pkt.proto] || PROTO_CFG.OTHER;
+  const dir   = pkt.direction || 'out';
+  const entry = getFromPool(cfg.type, cfg.color);
+  const lane  = cfg.lane % NUM_LANES;
+  const x     = laneX(dir, lane) + (Math.random() - 0.5) * 0.2;
+
+  entry.mesh.position.set(x, 0, SPAWN_Z[dir]);
+  entry.mesh.rotation.y = dir === 'out' ? -Math.PI / 2 : Math.PI / 2;
+  const s = 0.72 + (pkt.size / 1500) * 0.45;
+  entry.mesh.scale.set(s, s, s);
+  entry.mesh.visible = true;
+  entry.pkt = pkt;
+  entry.mesh.userData.pkt = pkt;
+
+  scene.add(entry.mesh);
+  const baseScale   = 0.72 + (pkt.size / 1500) * 0.45;
+  const exitBuilding = (dir === 'out' && pkt.service)
+    ? (LANDMARKS.find(lm => lm.service === pkt.service) ?? null)
+    : null;
+  activeCars.push({ entry, speed: cfg.speed + Math.random() * 0.2, dir,
+                    baseScale, exitBuilding, exitPhase: null, exitTargetX: 0 });
+
+  total++;
+  if (dir === 'out') outCount++; else inCount++;
+  recent.push(Date.now());
+  addFeed(pkt);
+
+  if (pkt.demo && !demoBadgeShown) {
+    demoBadgeShown = true;
+    document.getElementById('demo-badge').style.display = 'block';
+  }
+
+  // Pulsar el edificio del servicio destino/origen
+  if (pkt.service) {
+    const sb = serviceBuildings.get(pkt.service);
+    if (sb) sb.pulseT = 0;
+  }
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+const raycaster   = new THREE.Raycaster();
+const mouseNDC    = new THREE.Vector2();
+const ttEl        = document.getElementById('tooltip');
+const VTYPE_LABEL = { sedan:'Sedán', sports:'Deportivo', moto:'Moto', taxi:'Taxi', truck:'Camión', van:'Furgoneta' };
+
+function showTooltip(x, y, pkt) {
+  const hex = '#' + pkt.color.toString(16).padStart(6, '0');
+  document.getElementById('tt-proto').textContent = pkt.proto;
+  document.getElementById('tt-proto').style.color = hex;
+  const dirEl = document.getElementById('tt-dir');
+  dirEl.textContent = pkt.direction === 'out' ? '↗ SALIENTE' : '↙ ENTRANTE';
+  dirEl.className   = 'tt-dir ' + (pkt.direction || 'out');
+  document.getElementById('tt-src').textContent  = pkt.src;
+  document.getElementById('tt-dst').textContent  = pkt.dst;
+  document.getElementById('tt-size').textContent = pkt.size + ' bytes';
+  document.getElementById('tt-type').textContent = VTYPE_LABEL[pkt.type] || pkt.type;
+  const svcRow = document.getElementById('tt-svc-row');
+  if (pkt.service) {
+    document.getElementById('tt-svc').textContent = pkt.service;
+    svcRow.style.display = '';
+  } else { svcRow.style.display = 'none'; }
+  const infoRow = document.getElementById('tt-info-row');
+  if (pkt.info) {
+    document.getElementById('tt-info').textContent = pkt.info;
+    infoRow.style.display = '';
+  } else {
+    infoRow.style.display = 'none';
+  }
+  const tw = 210, th = 145;
+  ttEl.style.left    = (x + 14 + tw > innerWidth  ? x - tw - 14 : x + 14) + 'px';
+  ttEl.style.top     = (y + 14 + th > innerHeight ? y - th - 14 : y + 14) + 'px';
+  ttEl.style.display = 'block';
+}
+function hideTooltip() { ttEl.style.display = 'none'; }
+
+window.addEventListener('mousemove', e => {
+  if (followEntry || orbiting || isDragging) return;
+  mouseNDC.x =  (e.clientX / innerWidth)  * 2 - 1;
+  mouseNDC.y = -(e.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouseNDC, camera);
+
+  const targets = [];
+  for (const c of activeCars) {
+    const ch = c.entry.mesh.children;
+    for (let i = 0; i < Math.min(ch.length, 2); i++) {
+      if (ch[i].isMesh) targets.push(ch[i]);
+    }
+  }
+  const hits = raycaster.intersectObjects(targets, false);
+  if (hits.length > 0) {
+    const group = hits[0].object.userData.carGroup;
+    if (group?.userData.pkt) {
+      showTooltip(e.clientX, e.clientY, group.userData.pkt);
+      renderer.domElement.style.cursor = 'pointer';
+      return;
+    }
+  }
+  hideTooltip();
+  renderer.domElement.style.cursor = (paused || !followEntry) ? 'grab' : 'default';
+});
+window.addEventListener('mouseleave', hideTooltip);
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage = e => { try { pktBacklog.push(JSON.parse(e.data)); } catch(_){} };
+  ws.onclose   = () => setTimeout(connect, 2000);
+}
+connect();
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+const clock  = new THREE.Clock();
+const tmpPos = new THREE.Vector3();
+let   frame  = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  frame++;
+
+  if (!paused) {
+    // Spawn from backlog
+    if (pktBacklog.length > 0) spawnCar(pktBacklog.shift());
+
+    // Move cars
+    for (let i = activeCars.length - 1; i >= 0; i--) {
+      const c   = activeCars[i];
+      const pos = c.entry.mesh.position;
+
+      if (c.exitPhase === 'exiting') {
+        // Rotate to face the building side and slide towards it
+        const side      = Math.sign(c.exitTargetX);
+        const targetRot = side > 0 ? 0 : Math.PI;
+        c.entry.mesh.rotation.y = THREE.MathUtils.lerp(c.entry.mesh.rotation.y, targetRot, 7 * dt);
+        pos.x += side * c.speed * 13 * dt;
+
+        // Shrink as the car leaves the road and approaches the building
+        const roadEdge   = HALF_ROAD + SHOULDER;
+        const travelDist = Math.abs(c.exitTargetX) - roadEdge;
+        const progress   = Math.max(0, (Math.abs(pos.x) - roadEdge) / travelDist);
+        const sc = c.baseScale * Math.max(0.01, 1 - progress * 1.1);
+        c.entry.mesh.scale.setScalar(sc);
+
+        if (Math.abs(pos.x) >= Math.abs(c.exitTargetX) - 0.5 || sc <= c.baseScale * 0.04) {
+          returnToPool(c.entry); activeCars.splice(i, 1);
+        }
+      } else {
+        const dz = c.dir === 'out' ? -1 : 1;
+        pos.z += dz * c.speed * 16 * dt;
+
+        // Trigger exit when the car reaches its building's z
+        if (c.exitBuilding && c.exitPhase === null) {
+          const bz        = c.exitBuilding.z;
+          const reachable = c.dir === 'out' ? bz > DEAD_Z.out : bz > SPAWN_Z.in;
+          const reached   = c.dir === 'out' ? pos.z <= bz : pos.z >= bz;
+          if (reachable && reached) {
+            c.exitPhase   = 'exiting';
+            c.exitTargetX = c.exitBuilding.side * (HALF_ROAD + SHOULDER + 13);
+          }
+        }
+
+        const dead = c.dir === 'out'
+          ? pos.z < DEAD_Z.out
+          : pos.z > DEAD_Z.in;
+        if (dead) { returnToPool(c.entry); activeCars.splice(i, 1); }
+      }
+    }
+  }
+
+  // ── Camera ───────────────────────────────────────────────────────────────
+  if (followEntry && followEntry.pkt) {
+    // Chase camera — behind the car in its direction of travel
+    const car = followEntry.mesh;
+    const fwd = followEntry.pkt.direction === 'out' ? 1 : -1;
+    tmpPos.set(car.position.x * 0.6, car.position.y + 3, car.position.z + fwd * 8);
+    camera.position.lerp(tmpPos, 0.1);
+    camera.lookAt(car.position.x, car.position.y + 0.8, car.position.z - fwd * 4);
+  } else if (paused) {
+    applyOrbitCamera();
+  } else {
+    // Mouse-drag horizontal rotation
+    tmpPos.set(
+      Math.sin(camTheta) * camRadius,
+      camY,
+      CAM_CZ + Math.cos(camTheta) * camRadius
+    );
+    camera.position.lerp(tmpPos, 0.05);
+    camera.lookAt(0, 0.5, -30);
+  }
+
+  // Pulse landmark buildings
+  for (const [, sb] of serviceBuildings) {
+    if (sb.pulseT === null) continue;
+    sb.pulseT += dt;
+    const t = sb.pulseT;
+    if (t < 2.5) {
+      const s = 1 + t * 3;
+      sb.ring.scale.set(s, s, s);
+      sb.ringMat.opacity = Math.max(0, 0.75 * (1 - t / 2.5));
+      sb.ring.visible    = true;
+      const ls = 1 + 0.35 * Math.max(0, Math.exp(-t * 4));
+      sb.sprite.scale.set(10 * ls, 1.9 * ls, 1);
+    } else {
+      sb.ring.visible = false;
+      sb.ringMat.opacity = 0;
+      sb.sprite.scale.set(10, 1.9, 1);
+      sb.pulseT = null;
+    }
+  }
+
+  // Rain — always falls, even when paused
+  {
+    const a = rainGeo.attributes.position.array;
+    for (let i = 0; i < RAIN_COUNT; i++) {
+      a[i*6+1] -= rainVel[i] * dt;
+      a[i*6+4] -= rainVel[i] * dt;
+      if (a[i*6+1] < -0.5) {
+        const x = (Math.random() - 0.5) * RAIN_W * 2;
+        const y = 28 + Math.random() * 6;
+        const z = RAIN_Z1 + Math.random() * (RAIN_Z0 - RAIN_Z1);
+        a[i*6]   = x; a[i*6+1] = y;              a[i*6+2] = z;
+        a[i*6+3] = x; a[i*6+4] = y + STREAK_LEN;  a[i*6+5] = z;
+      }
+    }
+    rainGeo.attributes.position.needsUpdate = true;
+  }
+
+  if (frame % 20 === 0) updateStats();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
