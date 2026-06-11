@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import socket
 import threading
 import time
@@ -316,7 +317,7 @@ app.mount("/", StaticFiles(directory=".", html=True), name="static")
 if __name__ == "__main__":
     import socket as _socket, subprocess
 
-    PORT = 8000
+    PORT = int(os.environ.get("PORT", "8000"))
 
     def _port_busy(port):
         with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:

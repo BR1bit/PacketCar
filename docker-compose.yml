@@ -1,0 +1,15 @@
+services:
+  packetcar:
+    build: .
+    container_name: packetcar
+    # Red del host: Scapy ve las interfaces reales del servidor.
+    # Sin esto solo se vería el tráfico interno del contenedor (modo demo).
+    network_mode: host
+    cap_add:
+      - NET_RAW    # raw sockets para captura, sin necesidad de --privileged
+      - NET_ADMIN
+    environment:
+      # Con network_mode: host el puerto se comparte con el host.
+      # Cámbialo si el 8000 ya está ocupado por otro servicio.
+      - PORT=8000
+    restart: unless-stopped

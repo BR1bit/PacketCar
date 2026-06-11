@@ -1499,7 +1499,8 @@ window.addEventListener('mouseleave', hideTooltip);
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}/ws`);
+  const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${wsProto}://${location.host}/ws`);
   ws.onmessage = e => { try { pktBacklog.push(JSON.parse(e.data)); } catch(_){} };
   ws.onclose   = () => setTimeout(connect, 2000);
 }

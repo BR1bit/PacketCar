@@ -76,6 +76,26 @@ Abre el navegador en [http://localhost:8000](http://localhost:8000)
 
 ---
 
+## 🐳 Despliegue con Docker (tráfico del servidor)
+
+Para exponer PACKETCAR en un servidor y que los visitantes vean **el tráfico de ese servidor**:
+
+```bash
+docker compose up -d --build
+```
+
+El `docker-compose.yml` incluido usa:
+
+- `network_mode: host` — imprescindible: Scapy captura en las interfaces reales del servidor. Con la red bridge por defecto solo vería el tráfico interno del contenedor (y caería en modo demo)
+- `cap_add: NET_RAW, NET_ADMIN` — permite la captura de paquetes sin recurrir a `--privileged`
+- `PORT` — con red de host el puerto se comparte con los demás servicios del servidor; cámbialo en el compose si el 8000 está ocupado
+
+Si lo pones detrás de un reverse proxy con TLS (nginx, Caddy, Traefik), el frontend usa `wss://` automáticamente. Recuerda configurar el proxy para WebSockets (`Upgrade`/`Connection` headers) en la ruta `/ws`.
+
+> ⚠️ **Privacidad**: los visitantes verán las IPs y puertos de todas las conexiones del servidor, incluidas las de otros usuarios conectados a tus demás servicios. Exponlo solo si eso es aceptable (o protégelo con autenticación en el proxy).
+
+---
+
 ## Controles
 
 | Acción | Control |
